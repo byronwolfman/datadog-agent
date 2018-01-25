@@ -64,6 +64,7 @@ COPY --from=extract /output/ /
 # FIXME: copying it from the extract stage does not work
 RUN tar xfz s6.tgz && rm s6.tgz
 
+# Service definitions to start the agents
 COPY s6-services  /etc/services.d/
 
 # Prepare for running without root
@@ -85,4 +86,3 @@ HEALTHCHECK --interval=5m --timeout=20s --retries=1 \
 
 CMD ["/init"]
 ENTRYPOINT ["/entrypoint.sh"]
-##CMD ["/opt/datadog-agent/bin/agent/agent", "start"]
