@@ -72,8 +72,7 @@ type AutoConfig struct {
 	name2jmxmetrics   map[string]check.ConfigData // holds the metrics to collect for JMX checks
 	stop              chan bool
 	pollerActive      bool
-	healthTicker      *time.Ticker
-	healthToken       health.ID
+	health            *health.Handle
 	m                 sync.RWMutex
 }
 
@@ -87,8 +86,7 @@ func NewAutoConfig(collector *collector.Collector) *AutoConfig {
 		config2checks:   make(map[string][]check.ID),
 		name2jmxmetrics: make(map[string]check.ConfigData),
 		stop:            make(chan bool),
-		healthTicker:    time.NewTicker(health.DefaultPingFreq),
-		healthToken:     health.Register("ad-autoconfig"),
+		health:          health.Register("ad-autoconfig"),
 	}
 	ac.configResolver = newConfigResolver(collector, ac, ac.templateCache)
 	return ac
@@ -347,11 +345,9 @@ func (ac *AutoConfig) pollConfigs() {
 				if ac.configsPollTicker != nil {
 					ac.configsPollTicker.Stop()
 				}
-				ac.healthTicker.Stop()
-				health.Deregister(ac.healthToken)
+				ac.health.Deregister()
 				return
-			case <-ac.healthTicker.C:
-				health.Ping(ac.healthToken)
+			case <-ac.health.C:
 			case <-ac.configsPollTicker.C:
 				ac.m.RLock()
 				// invoke Collect on the known providers

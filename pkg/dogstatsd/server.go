@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"time"
 
 	log "github.com/cihub/seelog"
 
@@ -30,14 +29,13 @@ var (
 // Server represent a Dogstatsd server
 type Server struct {
 	sync.RWMutex
-	listeners    []listeners.StatsdListener
-	packetIn     chan *listeners.Packet
-	Statistics   *util.Stats
-	Started      bool
-	packetPool   *listeners.PacketPool
-	stopChan     chan bool
-	healthTicker *time.Ticker
-	healthToken  health.ID
+	listeners  []listeners.StatsdListener
+	packetIn   chan *listeners.Packet
+	Statistics *util.Stats
+	Started    bool
+	packetPool *listeners.PacketPool
+	stopChan   chan bool
+	health     *health.Handle
 }
 
 // NewServer returns a running Dogstatsd server
@@ -79,14 +77,13 @@ func NewServer(metricOut chan<- *metrics.MetricSample, eventOut chan<- metrics.E
 	}
 
 	s := &Server{
-		Started:      true,
-		Statistics:   stats,
-		packetIn:     packetChannel,
-		listeners:    tmpListeners,
-		packetPool:   packetPool,
-		stopChan:     make(chan bool),
-		healthTicker: time.NewTicker(health.DefaultPingFreq),
-		healthToken:  health.Register("dogstatsd-main"),
+		Started:    true,
+		Statistics: stats,
+		packetIn:   packetChannel,
+		listeners:  tmpListeners,
+		packetPool: packetPool,
+		stopChan:   make(chan bool),
+		health:     health.Register("dogstatsd-main"),
 	}
 	s.handleMessages(metricOut, eventOut, serviceCheckOut)
 
@@ -119,12 +116,7 @@ func (s *Server) worker(metricOut chan<- *metrics.MetricSample, eventOut chan<- 
 		select {
 		case <-s.stopChan:
 			return
-		case <-s.healthTicker.C:
-			// Shared token between all workers, one healthy worker is enough
-			// to get data through, we can refine later if needed.
-			s.RLock()
-			health.Ping(s.healthToken)
-			s.RUnlock()
+		case <-s.health.C:
 		case packet := <-s.packetIn:
 			var originTags []string
 
@@ -202,8 +194,7 @@ func (s *Server) Stop() {
 	if s.Statistics != nil {
 		s.Statistics.Stop()
 	}
-	s.healthTicker.Stop()
-	health.Deregister(s.healthToken)
+	s.health.Deregister()
 	s.Lock()
 	s.Started = false
 	s.Unlock()
