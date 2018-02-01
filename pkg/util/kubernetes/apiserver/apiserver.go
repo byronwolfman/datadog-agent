@@ -25,8 +25,8 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/tagger/collectors"
 	"github.com/DataDog/datadog-agent/pkg/util/cache"
-	"github.com/DataDog/datadog-agent/pkg/util/retry"
 	"github.com/DataDog/datadog-agent/pkg/util/kubernetes/leaderelection"
+	"github.com/DataDog/datadog-agent/pkg/util/retry"
 )
 
 var globalApiClient *APIClient
@@ -93,6 +93,7 @@ func (c *APIClient) connect() error {
 			c.client, err = k8s.NewClient(k8sconfig)
 		}
 		if err != nil {
+			log.Debugf("failure here: %s", err.Error())
 			return err
 		}
 	}
@@ -102,6 +103,7 @@ func (c *APIClient) connect() error {
 	defer cancel()
 	version, err := c.client.Discovery().Version(ctx)
 	if err != nil {
+		log.Debugf("err for version is: %s ", err.Error())
 		return err
 	}
 
@@ -113,15 +115,22 @@ func (c *APIClient) connect() error {
 	}
 	log.Debug("Could successfully collect Pods, Nodes, Services and Events.")
 
+	if config.Datadog.GetBool("leader_election") || config.Datadog.GetBool("collect_kubernetes_events") {
+		// Initiate the Leader election before starting the Service Mapper.
+		leaseDuration := config.Datadog.GetInt("leader_lease_duration")
+		errLeaderElection = leaderelection.StartLeaderElection(leaseDuration)
+
+		if errLeaderElection != nil {
+			log.Debug("Can't create official client %s", err.Error())
+			return errLeaderElection
+		}
+	}
+
 	useServiceMapper := config.Datadog.GetBool("use_service_mapper")
 	if !useServiceMapper {
 		return nil
 	}
 	c.startServiceMapping()
-	err = leaderelection.StartLeaderelection()
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
