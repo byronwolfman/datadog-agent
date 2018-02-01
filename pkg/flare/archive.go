@@ -8,8 +8,11 @@ package flare
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"expvar"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util"
 
 	"github.com/jhoonb/archivex"
+	// "github.com/mholt/archiver"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -29,6 +33,20 @@ type SearchPaths map[string]string
 
 // CreateArchive packages up the files
 func CreateArchive(local bool, distPath, pyChecksPath, logFilePath string) (string, error) {
+	b := make([]byte, 10)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+
+	dirName := base64.StdEncoding.EncodeToString([]byte(b))
+	tempDir, err := ioutil.TempDir("", dirName)
+	if err != nil {
+		return "", err
+	}
+
+	defer os.RemoveAll(tempDir)
+
 	zipFilePath := mkFilePath()
 	confSearchPaths := SearchPaths{
 		"":        config.Datadog.GetString("confd_path"),
